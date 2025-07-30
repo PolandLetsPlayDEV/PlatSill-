@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PlatSill™</title>
+  <style>
+    body {
+      margin: 0;
+      background: #1e1e1e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    canvas {
+      border: 3px solid #fff;
+      background: #444;
+      touch-action: none;
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      z-index: 2;
+    }
+
+    .btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.2);
+      border: 2px solid #fff;
+      color: #fff;
+      font-size: 20px;
+      text-align: center;
+      line-height: 60px;
+      user-select: none;
+    }
+
+    .joystick {
+      position: fixed;
+      bottom: 100px;
+      left: 20px;
+      width: 100px;
+      height: 100px;
+      background-color: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      touch-action: none;
+    }
+
+    .stick {
+      width: 50px;
+      height: 50px;
+      background-color: rgba(255,255,255,0.3);
+      border-radius: 50%;
+      position: absolute;
+      top: 25px;
+      left: 25px;
+      transform: translate(0, 0);
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<!-- Touch Controls -->
+<div class="controls">
+  <div class="btn" id="btnLeft">◀</div>
+  <div class="btn" id="btnRight">▶</div>
+  <div class="btn" id="btnJump">⬆</div>
+</div>
+
+<!-- Joystick -->
+<div class="joystick" id="joystick">
+  <div class="stick" id="stick"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+let touchInput = {
+  left: false,
+  right: false,
+  jump: false
+};
+
+const player = {
+  x: 100,
+  y: 0,
+  width: 40,
+  height: 60,
+  color: "#f5c542",
+  dx: 0,
+  dy: 0,
+  grounded: false,
+  speed: 3,
+  jumpPower: 10
+};
+
+const gravity = 0.5;
+const floorY = canvas.height - 40;
+
+// Touch buttons
+document.getElementById("btnLeft").addEventListener("touchstart", () => touchInput.left = true);
+document.getElementById("btnLeft").addEventListener("touchend", () => touchInput.left = false);
+document.getElementById("btnRight").addEventListener("touchstart", () => touchInput.right = true);
+document.getElementById("btnRight").addEventListener("touchend", () => touchInput.right = false);
+document.getElementById("btnJump").addEventListener("touchstart", () => touchInput.jump = true);
+document.getElementById("btnJump").addEventListener("touchend", () => touchInput.jump = false);
+
+// Joystick
+const joystick = document.getElementById("joystick");
+const stick = document.getElementById("stick");
+
+let joystickActive = false;
+let joyStartX = 0;
+let joyStartY = 0;
+
+joystick.addEventListener("touchstart", (e) => {
+  joystickActive = true;
+  const touch = e.touches[0];
+  joyStartX = touch.clientX;
+  joyStartY = touch.clientY;
+});
+
+joystick.addEventListener("touchmove", (e) => {
+  if (!joystickActive) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - joyStartX;
+  const limit = 40;
+
+  if (dx < -limit) {
+    touchInput.left = true;
+    touchInput.right = false;
+  } else if (dx > limit) {
+    touchInput.right = true;
+    touchInput.left = false;
+  } else {
+    touchInput.left = false;
+    touchInput.right = false;
+  }
+
+  stick.style.transform = `translate(${dx}px, 0px)`;
+});
+
+joystick.addEventListener("touchend", () => {
+  touchInput.left = false;
+  touchInput.right = false;
+  stick.style.transform = "translate(0, 0)";
+  joystickActive = false;
+});
+
+function update() {
+  // Movement
+  player.dx = 0;
+  if (keys["ArrowLeft"] || touchInput.left) player.dx = -player.speed;
+  if (keys["ArrowRight"] || touchInput.right) player.dx = player.speed;
+
+  if ((keys[" "] || touchInput.jump) && player.grounded) {
+    player.dy = -player.jumpPower;
+    player.grounded = false;
+  }
+
+  player.dy += gravity;
+
+  player.x += player.dx;
+  player.y += player.dy;
+
+  // Floor collision
+  if (player.y + player.height >= floorY) {
+    player.y = floorY - player.height;
+    player.dy = 0;
+    player.grounded = true;
+  }
+
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+  // Reset jump touch input so jump is not held
+  touchInput.jump = false;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, floorY, canvas.width, 40);
+
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+
+// Gamepad support
+window.addEventListener("gamepadconnected", () => {
+  console.log("Gamepad connected");
+  setInterval(() => {
+    const gp = navigator.getGamepads()[0];
+    if (!gp) return;
+
+    const [lx] = gp.axes;
+    const [btnA] = gp.buttons;
+
+    touchInput.left = lx < -0.3;
+    touchInput.right = lx > 0.3;
+    if (btnA.pressed) touchInput.jump = true;
+  }, 1000 / 60);
+});
+</script>
+</body>
+  </html>
